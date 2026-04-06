@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Platformer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #111;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: #fff;
+            font-family: sans-serif;
+            overflow: hidden;
+        }
+
+        #gameCanvas {
+            background-color: #000;
+            display: block;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .signature {
+            margin-top: 10px;
+            font-size: 11px;
+            color: #555;
+            text-align: right;
+            width: 800px;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas" width="800" height="450"></canvas>
+    <div class="signature">Created by Stonedhawk (Rahul)</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Input state
+        const keys = {
+            left: false,
+            right: false,
+            jump: false
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = true;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
+            if (e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'Space') {
+                keys.jump = true;
+                // Prevent scrolling if not in full screen
+                e.preventDefault();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = false;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = false;
+            if (e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'Space') keys.jump = false;
+        });
+
+        // Player physics constants
+        const GRAVITY = 0.6;
+        const TERMINAL_VELOCITY = 10;
+        const WALK_SPEED = 4;
+        const JUMP_VELOCITY = -12;
+
+        const player = {
+            x: canvas.width / 2 - 16,
+            y: 100,
+            width: 32,  // 16x20 at 2x scale
+            height: 40,
+            vx: 0,
+            vy: 0,
+            grounded: false
+        };
+
+        // Temporary floor for step 1
+        const floorY = 400;
+
+        function update() {
+            // Horizontal movement
+            if (keys.left) {
+                player.vx = -WALK_SPEED;
+            } else if (keys.right) {
+                player.vx = WALK_SPEED;
+            } else {
+                player.vx = 0;
+            }
+
+            // Jumping
+            if (keys.jump && player.grounded) {
+                player.vy = JUMP_VELOCITY;
+                player.grounded = false;
+            }
+
+            // Apply gravity
+            player.vy += GRAVITY;
+            if (player.vy > TERMINAL_VELOCITY) {
+                player.vy = TERMINAL_VELOCITY;
+            }
+
+            // Update position
+            player.x += player.vx;
+            player.y += player.vy;
+
+            // Simple floor collision
+            if (player.y + player.height >= floorY) {
+                player.y = floorY - player.height;
+                player.vy = 0;
+                player.grounded = true;
+            } else {
+                player.grounded = false;
+            }
+
+            // Keeping player in canvas temporarily
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw temporary floor
+            ctx.fillStyle = '#333';
+            ctx.fillRect(0, floorY, canvas.width, canvas.height - floorY);
+
+            // Draw player
+            // Body
+            ctx.fillStyle = '#4488ff';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            
+            // Face
+            ctx.fillStyle = '#ffcc88';
+            ctx.fillRect(player.x + 8, player.y + 4, 16, 16);
+
+            // Shoes
+            ctx.fillStyle = '#333';
+            ctx.fillRect(player.x + 2, player.y + 32, 10, 8); // Left shoe
+            ctx.fillRect(player.x + 20, player.y + 32, 10, 8); // Right shoe
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start game loop
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
