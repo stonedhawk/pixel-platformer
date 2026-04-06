@@ -20,7 +20,7 @@
         }
 
         #gameCanvas {
-            background-color: #000;
+            background-color: #000; /* Replaced by procedural drawing */
             display: block;
             box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
         }
@@ -44,17 +44,22 @@
         const ctx = canvas.getContext('2d');
 
         // Input state
-        const keys = {
-            left: false,
-            right: false,
-            jump: false
-        };
+        const keys = { left: false, right: false, jump: false };
 
-        let gameState = 'PLAYING'; // PLAYING, LEVEL_COMPLETE, GAME_OVER, WIN
+        let gameState = 'TITLE_SCREEN'; // TITLE_SCREEN, PLAYING, LEVEL_COMPLETE, GAME_OVER, WIN
 
         window.addEventListener('keydown', (e) => {
             if (e.code === 'Space') {
-                if (gameState === 'LEVEL_COMPLETE') {
+                if (gameState === 'TITLE_SCREEN') {
+                    currentLevelIndex = 0;
+                    score = 0;
+                    coinsCount = 0;
+                    lives = 3;
+                    loadLevel(currentLevelIndex);
+                    gameState = 'PLAYING';
+                    keys.jump = false;
+                    return;
+                } else if (gameState === 'LEVEL_COMPLETE') {
                     currentLevelIndex++;
                     if (currentLevelIndex >= levels.length) {
                         gameState = 'WIN';
@@ -62,10 +67,9 @@
                         loadLevel(currentLevelIndex);
                         gameState = 'PLAYING';
                     }
-                    keys.jump = false; // Block immediate jump
+                    keys.jump = false;
                     return;
                 } else if (gameState === 'GAME_OVER' || gameState === 'WIN') {
-                    // Reset entire game
                     score = 0;
                     coinsCount = 0;
                     lives = 3;
@@ -116,7 +120,8 @@
         const player = {
             x: 100, y: 100, startX: 100, startY: 100,
             width: 32, height: 40, vx: 0, vy: 0,
-            grounded: false, invincibleTimer: 0
+            grounded: false, invincibleTimer: 0,
+            coyoteTimer: 0, facing: 1
         };
 
         const camera = { x: 0, y: 0 };
@@ -218,9 +223,9 @@
                 }
                 map.push(row);
             }
-        }
 
-        loadLevel(currentLevelIndex);
+            camera.x = Math.max(0, Math.min(player.startX + player.width/2 - canvas.width/2, levelWidth*TILE_SIZE - canvas.width));
+        }
 
         function isSolid(tx, ty) {
             if (tx < 0 || tx >= levelWidth) return true;
@@ -260,7 +265,8 @@
                 player.y = player.startY;
                 player.vx = 0;
                 player.vy = 0;
-                player.invincibleTimer = 60; // 1 second invincibility
+                player.invincibleTimer = 60; 
+                camera.x = Math.max(0, Math.min(player.startX + player.width/2 - canvas.width/2, levelWidth*TILE_SIZE - canvas.width));
             }
         }
 
@@ -271,15 +277,23 @@
             levelFrames++;
             if (player.invincibleTimer > 0) player.invincibleTimer--;
 
+            // Coyote Timer Logic
+            if (player.grounded) player.coyoteTimer = 6;
+            else if (player.coyoteTimer > 0) player.coyoteTimer--;
+
             // Horizontal motion
             if (keys.left) player.vx = -WALK_SPEED;
             else if (keys.right) player.vx = WALK_SPEED;
             else player.vx = 0;
 
+            if (player.vx > 0) player.facing = 1;
+            if (player.vx < 0) player.facing = -1;
+
             // Jumping
-            if (keys.jump && player.grounded) {
+            if (keys.jump && player.coyoteTimer > 0) {
                 player.vy = JUMP_VELOCITY;
                 player.grounded = false;
+                player.coyoteTimer = 0;
             }
 
             // Gravity
@@ -319,7 +333,7 @@
                     let currentTy = Math.floor((e.y + e.height - 1) / TILE_SIZE);
                     let floorTy = currentTy + 1;
 
-                    if (isSolid(nextTx, currentTy) || !isSolid(nextTx, floorTy)) e.vx *= -1; // turnaround
+                    if (isSolid(nextTx, currentTy) || !isSolid(nextTx, floorTy)) e.vx *= -1; 
                     else e.x += e.vx;
                 } else if (e.state === 'squished') {
                     e.squishTimer--;
@@ -383,17 +397,127 @@
                 gameState = 'LEVEL_COMPLETE';
             }
 
-            // Camera follow
-            camera.x = Math.floor(player.x + player.width / 2 - canvas.width / 2);
+            // Smooth Camera follow
+            let targetCamX = player.x + player.width / 2 - canvas.width / 2;
+            if (targetCamX < 0) targetCamX = 0;
+            const maxCameraX = Math.max(0, levelWidth * TILE_SIZE - canvas.width);
+            if (targetCamX > maxCameraX) targetCamX = maxCameraX;
+            
+            camera.x += (targetCamX - camera.x) * 0.1;
+            // Strict bounds clamping
             if (camera.x < 0) camera.x = 0;
-            const maxCameraX = levelWidth * TILE_SIZE - canvas.width;
             if (camera.x > maxCameraX) camera.x = maxCameraX;
         }
 
+        function drawBackground() {
+            let px = camera.x * 0.3; // parallax translation speed modifier
+            
+            if (currentLevelIndex === 0) {
+                // Sky Gradient
+                let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                grad.addColorStop(0, '#88ccff');
+                grad.addColorStop(1, '#ffffff');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Clouds
+                ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                for(let i=0; i<10; i++) {
+                    let cx = ((i * 150 - px) % 1500 + 1500) % 1500 - 200;
+                    let cy = 50 + (i * 37) % 150;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 30, 0, Math.PI*2);
+                    ctx.arc(cx + 25, cy - 10, 40, 0, Math.PI*2);
+                    ctx.arc(cx + 50, cy, 30, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            } else if (currentLevelIndex === 1) {
+                // Cavern Dark Gradient
+                let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                grad.addColorStop(0, '#222');
+                grad.addColorStop(1, '#0a0a0a');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Stalactites and Stalagmites
+                ctx.fillStyle = '#333';
+                for(let i=0; i<15; i++) {
+                    let cx = ((i * 120 - px) % 1500 + 1500) % 1500 - 200;
+                    // top
+                    ctx.beginPath();
+                    ctx.moveTo(cx, 0);
+                    ctx.lineTo(cx + 40, 150 + (i*41)%100);
+                    ctx.lineTo(cx + 80, 0);
+                    ctx.fill();
+                    
+                    // bottom
+                    let cy = canvas.height;
+                    ctx.beginPath();
+                    ctx.moveTo(cx, cy);
+                    ctx.lineTo(cx + 30, cy - 100 - (i*31)%80);
+                    ctx.lineTo(cx + 60, cy);
+                    ctx.fill();
+                }
+            } else if (currentLevelIndex === 2) {
+                // Sky Fortress Gradient
+                let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                grad.addColorStop(0, '#44bbff');
+                grad.addColorStop(1, '#aaddff');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Distant floating platforms
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                for(let i=0; i<10; i++) {
+                    let cx = ((i * 200 - px) % 1500 + 1500) % 1500 - 200;
+                    let cy = 100 + (i * 87) % 200;
+                    ctx.fillRect(cx, cy, 100 + (i*33)%50, 20);
+                }
+            }
+        }
+
         function draw() {
-            // Clear canvas
-            ctx.fillStyle = '#111';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            if (gameState === 'TITLE_SCREEN') {
+                frameCount++;
+                
+                // Pretty gradient
+                let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                grad.addColorStop(0, '#2266aa');
+                grad.addColorStop(1, '#113355');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.textAlign = 'center';
+                
+                // Title
+                ctx.font = 'bold 64px sans-serif';
+                ctx.fillStyle = '#111';
+                ctx.fillText('PIXEL PLATFORMER', canvas.width / 2 + 4, 124);
+                ctx.fillStyle = '#ffcc00';
+                ctx.fillText('PIXEL PLATFORMER', canvas.width / 2, 120);
+
+                // Player preview
+                ctx.save();
+                ctx.translate(canvas.width / 2, 220);
+                ctx.scale(2, 2); 
+                
+                ctx.fillStyle = '#4488ff';
+                ctx.fillRect(-16, 0, 32, 40);
+                ctx.fillStyle = '#ffcc88';
+                ctx.fillRect(0, 4, 16, 16);
+                ctx.fillStyle = '#333';
+                ctx.fillRect(-14, 32, 10, 8);
+                ctx.fillRect(4, 32, 10, 8);
+                ctx.restore();
+                
+                ctx.font = '24px sans-serif';
+                ctx.fillStyle = (Math.floor(frameCount / 30) % 2 === 0) ? '#fff' : '#aaa';
+                ctx.fillText('Press SPACE to Start', canvas.width / 2, 380);
+                return;
+            }
+
+            // Draw Background Parallax
+            drawBackground();
 
             const startX = Math.floor(camera.x / TILE_SIZE);
             const endX = Math.floor((camera.x + canvas.width) / TILE_SIZE);
@@ -458,22 +582,46 @@
             let px = player.x - camera.x;
             let py = player.y;
 
-            if (player.invincibleTimer > 0) {
-                if (Math.floor(frameCount / 4) % 2 === 0) ctx.globalAlpha = 0.5;
+            ctx.save();
+            if (player.invincibleTimer > 0 && Math.floor(frameCount / 4) % 2 === 0) {
+                ctx.globalAlpha = 0.5;
             }
+
+            ctx.translate(px + player.width/2, py);
+            ctx.scale(player.facing, 1);
+            
+            let bx = -16;
 
             // Body
             ctx.fillStyle = '#4488ff';
-            ctx.fillRect(px, py, player.width, player.height);
+            ctx.fillRect(bx, 0, player.width, player.height);
             // Face
             ctx.fillStyle = '#ffcc88';
-            ctx.fillRect(px + 8, py + 4, 16, 16);
+            ctx.fillRect(bx + 16, 4, 16, 16);
+            
+            // Walking animation
+            let jumpOffset = 0;
+            let walkOffset1 = 0;
+            let walkOffset2 = 0;
+
+            if (!player.grounded) {
+                jumpOffset = -4; // pull legs up slightly when jumping
+            } else if (player.vx !== 0) {
+                if (Math.floor(frameCount / 8) % 2 === 0) {
+                    walkOffset1 = 4;
+                    walkOffset2 = -2;
+                } else {
+                    walkOffset1 = -2;
+                    walkOffset2 = 4;
+                }
+            }
+
             // Shoes
             ctx.fillStyle = '#333';
-            ctx.fillRect(px + 2, py + 32, 10, 8);
-            ctx.fillRect(px + 20, py + 32, 10, 8);
+            ctx.fillRect(bx + 2, 32 - walkOffset1 + jumpOffset, 10, 8); 
+            ctx.fillRect(bx + 20, 32 - walkOffset2 + jumpOffset, 10, 8); 
 
-            ctx.globalAlpha = 1.0;
+            ctx.restore();
 
             // Draw HUD
             ctx.textAlign = 'left';
@@ -559,7 +707,6 @@
             requestAnimationFrame(gameLoop);
         }
 
-        // Start game
         requestAnimationFrame(gameLoop);
     </script>
 </body>
