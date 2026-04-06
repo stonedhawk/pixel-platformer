@@ -7,11 +7,12 @@ A purely vanilla JavaScript, HTML5 Canvas-based side-scrolling platformer with g
 **Play the Demo:** [https://stonedhawk.github.io/pixel-platformer](https://stonedhawk.github.io/pixel-platformer)
 
 ## Features
-- **3 Distinct Levels:** Green Hills, Underground, and Sky Fortress.
-- **Physics and Mechanics:** Smooth jumping, terminal downward velocity, coyote time (6 frames), tile-based collision, and smooth camera lerping.
-- **Dynamic Elements:** Collect coins for bonus points, stomp on patrolling enemies or strictly dodge them to survive, and avoid spike hazards.
-- **Parallax Backgrounds:** Procedural canvas skies, clouds, caverns, and platforms moving seamlessly in parallax behind the action. 
-- **Stats Integration:** Robust win-loss states, life counters, frame-perfect time bonuses per level.
+- **10 Distinct Levels:** Journey through Green Hills, Underground Caverns, Sky Fortress, Snowy Peaks, Deep Dungeons, Canopy Jungles, Abandoned Factories, Volcanic Cores, The Void, and the Final Boss Arena.
+- **Epic Boss Battle:** Face off against a multi-hit boss on Level 10 with a dedicated HP bar and unique combat mechanics.
+- **Refined Physics:** Slower, smoother, and floatier movement with larger reaction windows. Features coyote time (6 frames), tile-based collision, and silky-smooth camera lerping.
+- **Dynamic Elements:** Collect coins for bonus points, stomp on patrolling enemies (and the boss!) for high scores, and avoid deadly spike hazards.
+- **Parallax Backgrounds:** 10 unique procedural backgrounds spanning various biomes, including starfields, rising volcanic embers, and mountain ranges.
+- **Stats Integration:** Comprehensive scoring, life counters, and time-based bonuses per level.
 
 ## How to Play
 
