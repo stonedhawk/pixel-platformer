@@ -98,10 +98,10 @@
         });
 
         // Game Constants
-        const GRAVITY = 0.6;
-        const TERMINAL_VELOCITY = 10;
-        const WALK_SPEED = 4;
-        const JUMP_VELOCITY = -12;
+        const GRAVITY = 0.45;
+        const TERMINAL_VELOCITY = 8;
+        const WALK_SPEED = 3.2;
+        const JUMP_VELOCITY = -10.5;
         const TILE_SIZE = 32;
 
         // Globals
@@ -180,10 +180,129 @@
             ".............................................................."
         ];
 
-        const levels = [level1, level2, level3];
-        const levelNames = ['Level 1: Green Hills', 'Level 2: Underground', 'Level 3: Sky Fortress'];
+        const level4 = [
+            "..............................................................",
+            "..............................................................",
+            "..............................................................",
+            "..............................C...C...........................",
+            "...P.....C............C......GGG.GGG..........................",
+            "..GGG...GGG.........EE.............................D..........",
+            "...................GGGG.........................GGGG..........",
+            ".............S................S.........S.....................",
+            "...........GGGGG............GGGGG.....GGGGG...................",
+            "..............................................................",
+            "........C.........E.......C...................................",
+            ".......GGG.......GGG.....GGG..................................",
+            "..............................................................",
+            "..............................................................",
+            ".............................................................."
+        ];
+        const level5 = [
+            "##############################################################",
+            "#...P........C...S.....S........E..........C.................#",
+            "#.GGG.......GGGGGGGGGGGGGG.....GGG........GGG.S.....S....D...#",
+            "#........................#.....................GGGGGGGG.GGG..#",
+            "#...........E............#....E........C.....................#",
+            "#C.......GGGGGG..........#...GGG......GGG....................#",
+            "GGG......................#...................................#",
+            "#...................C....#..................C.............E..#",
+            "#....S.............GGG...#........S........GGGG.........GGGGG#",
+            "#.GGGGGG...S.............#.....GGGGGG........................#",
+            "#.........GGGGGG.........#.....................S.............#",
+            "##########################...#################################",
+            "##############################################################",
+            "##############################################################",
+            "##############################################################"
+        ];
+        const level6 = [
+            "..............................................................",
+            "....................................................C.........",
+            "...................................................GGG...D....",
+            ".......P............E........C.........E................GGG...",
+            "......GGG..........GGG......GGG.......GGG........C............",
+            ".................................................GGG..........",
+            "...C.......S..............S........C..........................",
+            "..GGG....GGGGG..........GGGGG.....GGG.........C...............",
+            "..................S..........................GGG..............",
+            "................GGGGG.........................................",
+            ".............................S................................",
+            "...........................GGGGG..............................",
+            "..............................................................",
+            "..............................................................",
+            ".............................................................."
+        ];
+        const level7 = [
+            "..............................................................",
+            "..............................................................",
+            "......P..........................C..............C........D....",
+            ".....GGG.........S.....S........GGG............GGG......GGG...",
+            "...............GGGGGGGGGGG...............EE...................",
+            "..........C..C..........................GGGG..................",
+            ".........GGGGGG..............C.......................C........",
+            "............................GGG...S.................GGG.......",
+            ".................................GGGGG.......S................",
+            "....E............E.........................GGGGG..............",
+            "...GGG..........GGG...........................................",
+            "..............................................................",
+            "..............................................................",
+            "..............................................................",
+            ".............................................................."
+        ];
+        const level8 = [
+            "..............................................................",
+            "...................................C........C.........C....D..",
+            ".....P............................GGG......GGG.......GGG..GGG.",
+            "....GGG.....S.....S......C....................................",
+            "..........GGGGGGGGGGG...GGG.............E.........E...........",
+            ".......................................GGG.......GGG..........",
+            "........C...E.........S........S..............................",
+            ".......GGG.GGG......GGGGG....GGGGG............................",
+            "..............................................................",
+            "..............................................................",
+            "..............................................................",
+            "..............................................................",
+            "..............................................................",
+            "..............................................................",
+            ".............................................................."
+        ];
+        const level9 = [
+            "..............................................................",
+            "...................................................D..........",
+            ".........................C...........C............GGG.........",
+            "......P.................GGG.........GGG.......................",
+            ".....GGG.......E................E...................C.........",
+            "..............GGG..............GGG.................GGG........",
+            ".......C....C........S.....S................E.................",
+            "......GGGGGGGGG....GGGGGGGGGGG.............GGG................",
+            "..................................S.....S.....................",
+            "................................GGGGGGGGGGG...................",
+            "..............................................................",
+            "..............................................................",
+            "..............................................................",
+            "..............................................................",
+            ".............................................................."
+        ];
+        const level10 = [
+            "##############################################################",
+            "##############################################################",
+            "##############################################################",
+            "###........................................................###",
+            "###........................................................###",
+            "###........................................................###",
+            "###........................................................###",
+            "###.......................................GGG..............###",
+            "###..............GGG.......................................###",
+            "###...P.............................................B......###",
+            "##############################################################",
+            "##############################################################",
+            "##############################################################",
+            "##############################################################",
+            "##############################################################"
+        ];
+        const levels = [level1, level2, level3, level4, level5, level6, level7, level8, level9, level10];
+        const levelNames = ['Level 1: Green Hills', 'Level 2: Underground', 'Level 3: Sky Fortress', 'Level 4: Snowy Peaks', 'Level 5: Deep Dungeon', 'Level 6: Canopy Jungle', 'Level 7: Abandoned Factory', 'Level 8: Volcanic Core', 'Level 9: The Void', 'Level 10: Final Boss'];
 
-        let map = [], coinsList = [], enemiesList = [], door = null;
+        let map = [], coinsList = [], enemiesList = [], door = null, boss = null;
         let levelWidth = 0, levelHeight = 0;
 
         function loadLevel(index) {
@@ -193,6 +312,7 @@
             coinsList = [];
             enemiesList = [];
             door = null;
+            boss = null;
             levelFrames = 0;
             currentLevelEnemiesKilled = 0;
             currentLevelCoins = 0;
@@ -217,6 +337,9 @@
                         tile = '.';
                     } else if (tile === 'D') {
                         door = { x: x * TILE_SIZE + 4, y: y * TILE_SIZE, width: 24, height: 32 };
+                        tile = '.';
+                    } else if (tile === 'B') {
+                        boss = { x: x * TILE_SIZE, y: y * TILE_SIZE - 16, width: 48, height: 48, vx: 3, vy: 0, state: 'alive', hp: 5, invincibleTimer: 0 };
                         tile = '.';
                     }
                     row.push(tile);
@@ -397,6 +520,44 @@
                 gameState = 'LEVEL_COMPLETE';
             }
 
+            // Boss Update
+            if (boss && boss.state === 'alive') {
+                if (boss.invincibleTimer > 0) boss.invincibleTimer--;
+                boss.vy += GRAVITY;
+                boss.y += boss.vy;
+                if (checkCollision(boss.x, boss.y, boss.width, boss.height)) {
+                    if (boss.vy > 0) {
+                        boss.y = Math.floor((boss.y + boss.height) / TILE_SIZE) * TILE_SIZE - boss.height;
+                        boss.vy = 0;
+                    }
+                }
+                let nextX = boss.x + boss.vx;
+                let nextTx = Math.floor((boss.vx > 0 ? nextX + boss.width : nextX) / TILE_SIZE);
+                let currentTy = Math.floor((boss.y + boss.height - 1) / TILE_SIZE);
+                let floorTy = currentTy + 1;
+                if (isSolid(nextTx, currentTy) || !isSolid(nextTx, floorTy)) boss.vx *= -1; 
+                else boss.x += boss.vx;
+                
+                if (isOverlapping(player, boss)) {
+                    if (player.vy > 0 && player.y + player.height - player.vy <= boss.y + 16) {
+                        player.vy = JUMP_VELOCITY * 1.2;
+                        if (boss.invincibleTimer <= 0) {
+                            boss.hp--;
+                            boss.invincibleTimer = 30;
+                            score += 500;
+                            if (boss.hp <= 0) {
+                                boss.state = 'dead';
+                                score += 5000;
+                                let doorTx = Math.floor(levelWidth / 2);
+                                door = { x: doorTx * TILE_SIZE + 4, y: 10 * TILE_SIZE, width: 24, height: 32 };
+                            }
+                        }
+                    } else {
+                        killPlayer();
+                    }
+                }
+            }
+
             // Smooth Camera follow
             let targetCamX = player.x + player.width / 2 - canvas.width / 2;
             if (targetCamX < 0) targetCamX = 0;
@@ -473,6 +634,84 @@
                     let cy = 100 + (i * 87) % 200;
                     ctx.fillRect(cx, cy, 100 + (i*33)%50, 20);
                 }
+            } else if (currentLevelIndex === 3) {
+                let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                grad.addColorStop(0, '#eef6ff');
+                grad.addColorStop(1, '#ffffff');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ccddff';
+                for(let i=0; i<8; i++) {
+                    let cx = ((i * 300 - px*0.5) % 2000 + 2000) % 2000 - 300;
+                    ctx.beginPath();
+                    ctx.moveTo(cx, canvas.height);
+                    ctx.lineTo(cx + 200, 100 + (i*71)%150);
+                    ctx.lineTo(cx + 400, canvas.height);
+                    ctx.fill();
+                }
+            } else if (currentLevelIndex === 4) {
+                ctx.fillStyle = '#1e1e24';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.strokeStyle = '#2a2a30';
+                for(let i=0; i<20; i++) {
+                    let offX = ((i * 100 - px) % 2000 + 2000) % 2000 - 100;
+                    ctx.strokeRect(offX, 50, 100, 300);
+                    ctx.strokeRect(offX+50, 100, 100, 300);
+                }
+            } else if (currentLevelIndex === 5) {
+                let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                grad.addColorStop(0, '#226622');
+                grad.addColorStop(1, '#66aa44');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#114411';
+                for(let i=0; i<15; i++) {
+                    let cx = ((i * 150 - px*0.8) % 2000 + 2000) % 2000 - 200;
+                    ctx.fillRect(cx, 0, 20 + (i*13)%30, canvas.height);
+                }
+            } else if (currentLevelIndex === 6) {
+                let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                grad.addColorStop(0, '#885533');
+                grad.addColorStop(1, '#333333');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#222';
+                for(let i=0; i<10; i++) {
+                    let cx = ((i * 250 - px*0.4) % 2000 + 2000) % 2000 - 300;
+                    ctx.fillRect(cx, 150 + (i*81)%100, 100, canvas.height);
+                }
+            } else if (currentLevelIndex === 7) {
+                let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                grad.addColorStop(0, '#110000');
+                grad.addColorStop(1, '#ff3300');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ffaa00';
+                for(let i=0; i<30; i++) {
+                    let cx = ((i * 70 - px) % 1500 + 1500) % 1500 - 50;
+                    let cy = canvas.height - ((frameCount*0.5 + i*83) % canvas.height);
+                    ctx.fillRect(cx, cy, 4, 12);
+                }
+            } else if (currentLevelIndex === 8) {
+                ctx.fillStyle = '#050510';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ffffff';
+                for(let i=0; i<50; i++) {
+                    let cx = ((i * 50 - px*2.0) % 1500 + 1500) % 1500 - 50;
+                    let cy = (i * 123) % canvas.height;
+                    let size = (i%3) + 1;
+                    ctx.fillRect(cx, cy, size, size);
+                }
+            } else if (currentLevelIndex === 9) {
+                let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                grad.addColorStop(0, '#440000');
+                grad.addColorStop(1, '#110000');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#880000';
+                ctx.font = 'bold 80px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('FINAL BOSS', canvas.width/2 - px*0.1, 200);
             }
         }
 
@@ -576,6 +815,21 @@
                 ctx.fillStyle = '#cc3333';
                 if (e.state === 'squished') ctx.fillRect(ex, e.y + e.height/2, e.width, e.height / 2);
                 else ctx.fillRect(ex, e.y, e.width, e.height);
+            }
+
+            // Draw Boss
+            if (boss && boss.state === 'alive') {
+                let bx = boss.x - camera.x;
+                ctx.fillStyle = '#990099';
+                if (boss.invincibleTimer > 0 && Math.floor(frameCount / 4) % 2 === 0) ctx.fillStyle = '#ffffff';
+                ctx.fillRect(bx, boss.y, boss.width, boss.height);
+                ctx.fillStyle = '#ffff00';
+                if (boss.vx > 0) ctx.fillRect(bx + 30, boss.y + 10, 8, 8);
+                else ctx.fillRect(bx + 10, boss.y + 10, 8, 8);
+                ctx.fillStyle = '#333';
+                ctx.fillRect(bx, boss.y - 12, boss.width, 6);
+                ctx.fillStyle = '#ff3333';
+                ctx.fillRect(bx, boss.y - 12, (boss.hp / 5) * boss.width, 6);
             }
 
             // Draw player
