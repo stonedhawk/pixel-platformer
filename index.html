@@ -65,25 +65,35 @@
             if (e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'Space') keys.jump = false;
         });
 
-        // Player physics constants
+        // Game Constants
         const GRAVITY = 0.6;
         const TERMINAL_VELOCITY = 10;
         const WALK_SPEED = 4;
         const JUMP_VELOCITY = -12;
+        const TILE_SIZE = 32;
+
+        // Globals
+        let score = 0;
+        let coinsCount = 0;
+        let lives = 3;
+        let levelName = 'Level 1: Green Hills';
+        let frameCount = 0;
 
         const player = {
             x: 100,
             y: 100,
-            width: 32,  // 16x20 at 2x scale
+            startX: 100,
+            startY: 100,
+            width: 32,
             height: 40,
             vx: 0,
             vy: 0,
-            grounded: false
+            grounded: false,
+            invincibleTimer: 0
         };
 
         const camera = { x: 0, y: 0 };
-        const TILE_SIZE = 32;
-
+        
         const level1 = [
             "..............................................................",
             "..............................................................",
@@ -103,11 +113,15 @@
         ];
 
         let map = [];
+        let coinsList = [];
+        let enemiesList = [];
         let levelWidth = 0;
         let levelHeight = 0;
 
         function loadLevel(levelData) {
             map = [];
+            coinsList = [];
+            enemiesList = [];
             levelHeight = levelData.length;
             levelWidth = levelData[0].length;
             for (let y = 0; y < levelHeight; y++) {
@@ -115,9 +129,18 @@
                 for (let x = 0; x < levelWidth; x++) {
                     let tile = levelData[y][x];
                     if (tile === 'P') {
-                        player.x = x * TILE_SIZE;
-                        player.y = y * TILE_SIZE;
+                        player.startX = x * TILE_SIZE;
+                        player.startY = y * TILE_SIZE;
+                        player.x = player.startX;
+                        player.y = player.startY;
                         tile = '.'; // clear spawn point
+                    } else if (tile === 'C') {
+                        coinsList.push({ x: x * TILE_SIZE, y: y * TILE_SIZE, collected: false });
+                        tile = '.';
+                    } else if (tile === 'E') {
+                        // slightly smaller hitbox for enemies, placed on ground
+                        enemiesList.push({ x: x * TILE_SIZE + 4, y: y * TILE_SIZE + 16, width: 24, height: 16, vx: -1, state: 'alive', squishTimer: 0 });
+                        tile = '.';
                     }
                     row.push(tile);
                 }
@@ -125,12 +148,11 @@
             }
         }
 
-        // Initialize Level
         loadLevel(level1);
 
         function isSolid(tx, ty) {
-            if (tx < 0 || tx >= levelWidth) return true; // solid walls on edges
-            if (ty < 0 || ty >= levelHeight) return false; // not solid top/bottom (can fall in holes)
+            if (tx < 0 || tx >= levelWidth) return true;
+            if (ty < 0 || ty >= levelHeight) return false;
             const tile = map[ty][tx];
             return tile === '#' || tile === 'G';
         }
@@ -149,7 +171,33 @@
             return false;
         }
 
+        function isOverlapping(r1, r2) {
+            return r1.x < r2.x + r2.width &&
+                   r1.x + r1.width > r2.x &&
+                   r1.y < r2.y + r2.height &&
+                   r1.y + r1.height > r2.y;
+        }
+
+        function killPlayer() {
+            if (player.invincibleTimer > 0) return;
+            lives--;
+            if (lives <= 0) {
+                // simple game over reset for now
+                lives = 3;
+                score = 0;
+                coinsCount = 0;
+            }
+            player.x = player.startX;
+            player.y = player.startY;
+            player.vx = 0;
+            player.vy = 0;
+            player.invincibleTimer = 60; // 1 second invincibility
+        }
+
         function update() {
+            frameCount++;
+            if (player.invincibleTimer > 0) player.invincibleTimer--;
+
             // Horizontal motion
             if (keys.left) {
                 player.vx = -WALK_SPEED;
@@ -174,9 +222,9 @@
             // Horizontal Collision
             player.x += player.vx;
             if (checkCollision(player.x, player.y, player.width, player.height)) {
-                if (player.vx > 0) { // moving right
+                if (player.vx > 0) {
                     player.x = Math.floor((player.x + player.width) / TILE_SIZE) * TILE_SIZE - player.width;
-                } else if (player.vx < 0) { // moving left
+                } else if (player.vx < 0) {
                     player.x = Math.floor(player.x / TILE_SIZE) * TILE_SIZE + TILE_SIZE;
                 }
                 player.vx = 0;
@@ -186,10 +234,10 @@
             player.grounded = false;
             player.y += player.vy;
             if (checkCollision(player.x, player.y, player.width, player.height)) {
-                if (player.vy > 0) { // falling
+                if (player.vy > 0) {
                     player.y = Math.floor((player.y + player.height) / TILE_SIZE) * TILE_SIZE - player.height;
                     player.grounded = true;
-                } else if (player.vy < 0) { // jumping up (hit ceiling)
+                } else if (player.vy < 0) {
                     player.y = Math.floor(player.y / TILE_SIZE) * TILE_SIZE + TILE_SIZE;
                 }
                 player.vy = 0;
@@ -197,10 +245,71 @@
 
             // Fall off bottom check
             if (player.y > canvas.height + 100) {
-                // Temporary respawn behavior for falling in hole
-                loadLevel(level1);
-                player.vx = 0;
-                player.vy = 0;
+                killPlayer();
+            }
+
+            // Move Enemies
+            for (let e of enemiesList) {
+                if (e.state === 'dead') continue;
+                if (e.state === 'alive') {
+                    let nextX = e.x + e.vx;
+                    let nextTx = Math.floor((e.vx > 0 ? nextX + e.width : nextX) / TILE_SIZE);
+                    let currentTy = Math.floor((e.y + e.height - 1) / TILE_SIZE);
+                    let floorTy = currentTy + 1;
+
+                    if (isSolid(nextTx, currentTy) || !isSolid(nextTx, floorTy)) {
+                        e.vx *= -1; // turnaround
+                    } else {
+                        e.x += e.vx;
+                    }
+                } else if (e.state === 'squished') {
+                    e.squishTimer--;
+                    if (e.squishTimer <= 0) e.state = 'dead';
+                }
+            }
+
+            // Coin collection
+            for (let c of coinsList) {
+                if (!c.collected) {
+                    // Hitbox inside tile
+                    if (isOverlapping(player, { x: c.x + 8, y: c.y + 8, width: 16, height: 16 })) {
+                        c.collected = true;
+                        coinsCount++;
+                        score += 50;
+                    }
+                }
+            }
+
+            // Enemy collision
+            for (let e of enemiesList) {
+                if (e.state === 'alive') {
+                    if (isOverlapping(player, e)) {
+                        // Stomp check
+                        if (player.vy > 0 && player.y + player.height - player.vy <= e.y + 8) {
+                            e.state = 'squished';
+                            e.squishTimer = 30;
+                            player.vy = -8; // bounce
+                            score += 100;
+                        } else {
+                            killPlayer();
+                        }
+                    }
+                }
+            }
+
+            // Hazard collision (Spikes)
+            let tx1 = Math.floor(player.x / TILE_SIZE);
+            let tx2 = Math.floor((player.x + player.width - 0.1) / TILE_SIZE);
+            let ty1 = Math.floor(player.y / TILE_SIZE);
+            let ty2 = Math.floor((player.y + player.height - 0.1) / TILE_SIZE);
+            for (let ty = ty1; ty <= ty2; ty++) {
+                for (let tx = tx1; tx <= tx2; tx++) {
+                    if (tx >= 0 && tx < levelWidth && ty >= 0 && ty < levelHeight) {
+                        if (map[ty][tx] === 'S') {
+                            killPlayer();
+                        }
+                    }
+                }
             }
 
             // Camera follow
@@ -212,7 +321,7 @@
 
         function draw() {
             // Clear canvas
-            ctx.fillStyle = '#111'; // Same as background
+            ctx.fillStyle = '#111';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             const startX = Math.floor(camera.x / TILE_SIZE);
@@ -237,13 +346,6 @@
                         ctx.fillStyle = '#44aa44';
                         ctx.fillRect(drawX, drawY, TILE_SIZE, 8);
                     }
-                    // Placeholders for dynamic elements
-                    if (tile === 'C') {
-                        ctx.fillStyle = '#ffcc00';
-                        ctx.beginPath();
-                        ctx.arc(drawX + 16, drawY + 16, 8, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
                     if (tile === 'S') { // Spike
                         ctx.fillStyle = '#888';
                         ctx.beginPath();
@@ -252,20 +354,45 @@
                         ctx.lineTo(drawX, drawY + 32);
                         ctx.fill();
                     }
-                    if (tile === 'E') { // Enemy
-                        ctx.fillStyle = '#cc3333';
-                        ctx.fillRect(drawX + 4, drawY + 16, 24, 16);
-                    }
-                    if (tile === 'D') { // Door
+                    if (tile === 'D') { // Door placeholder
                         ctx.fillStyle = '#8855aa';
                         ctx.fillRect(drawX + 4, drawY, 24, 32);
                     }
                 }
             }
 
+            // Draw coins
+            for (let c of coinsList) {
+                if (!c.collected) {
+                    const shimmer = (frameCount % 30 < 15) ? 6 : 8; // 2-frame animation
+                    ctx.fillStyle = '#ffcc00';
+                    ctx.beginPath();
+                    ctx.arc(c.x + 16 - camera.x, c.y + 16, shimmer, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // Draw Enemies
+            for (let e of enemiesList) {
+                if (e.state === 'dead') continue;
+                let ex = e.x - camera.x;
+                ctx.fillStyle = '#cc3333';
+                if (e.state === 'squished') {
+                    ctx.fillRect(ex, e.y + 8, e.width, e.height / 2);
+                } else {
+                    ctx.fillRect(ex, e.y, e.width, e.height);
+                }
+            }
+
             // Draw player
             let px = player.x - camera.x;
             let py = player.y;
+
+            if (player.invincibleTimer > 0) {
+                if (Math.floor(frameCount / 4) % 2 === 0) {
+                    ctx.globalAlpha = 0.5;
+                }
+            }
 
             // Body
             ctx.fillStyle = '#4488ff';
@@ -277,6 +404,33 @@
             ctx.fillStyle = '#333';
             ctx.fillRect(px + 2, py + 32, 10, 8);
             ctx.fillRect(px + 20, py + 32, 10, 8);
+
+            ctx.globalAlpha = 1.0;
+
+            // Draw HUD
+            ctx.textAlign = 'left';
+            
+            // Coins
+            ctx.fillStyle = '#ffcc00';
+            ctx.beginPath();
+            ctx.arc(20, 20, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 16px sans-serif';
+            ctx.fillText(coinsCount, 35, 26);
+
+            // Level Name
+            ctx.textAlign = 'center';
+            ctx.fillText(levelName, canvas.width / 2, 26);
+
+            // Lives and Score
+            ctx.textAlign = 'right';
+            let hearts = '';
+            for(let i = 0; i < lives; i++) hearts += '♥';
+            ctx.fillStyle = '#f44';
+            ctx.fillText(hearts, canvas.width - 120, 26);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(String(score).padStart(5, '0'), canvas.width - 20, 26);
         }
 
         function gameLoop() {
