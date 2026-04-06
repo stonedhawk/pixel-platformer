@@ -55,7 +55,6 @@
             if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
             if (e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'Space') {
                 keys.jump = true;
-                // Prevent scrolling if not in full screen
                 e.preventDefault();
             }
         });
@@ -73,7 +72,7 @@
         const JUMP_VELOCITY = -12;
 
         const player = {
-            x: canvas.width / 2 - 16,
+            x: 100,
             y: 100,
             width: 32,  // 16x20 at 2x scale
             height: 40,
@@ -82,11 +81,76 @@
             grounded: false
         };
 
-        // Temporary floor for step 1
-        const floorY = 400;
+        const camera = { x: 0, y: 0 };
+        const TILE_SIZE = 32;
+
+        const level1 = [
+            "..............................................................",
+            "..............................................................",
+            "..............................................................",
+            "..............................................................",
+            "..............................................................",
+            ".............................................C.......D........",
+            ".......P.....................C...C..........GGG.....GGG.......",
+            "......GGG...................GGG.GGG...........................",
+            "......................C..................E....................",
+            "...G.................GGG................GGG...................",
+            ".......S....E.......................G..........S..............",
+            "GGGGGGGGGGGGGGGG.GG.GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+            "################.##.##########################################",
+            "################.##.##########################################",
+            "################.##.##########################################"
+        ];
+
+        let map = [];
+        let levelWidth = 0;
+        let levelHeight = 0;
+
+        function loadLevel(levelData) {
+            map = [];
+            levelHeight = levelData.length;
+            levelWidth = levelData[0].length;
+            for (let y = 0; y < levelHeight; y++) {
+                let row = [];
+                for (let x = 0; x < levelWidth; x++) {
+                    let tile = levelData[y][x];
+                    if (tile === 'P') {
+                        player.x = x * TILE_SIZE;
+                        player.y = y * TILE_SIZE;
+                        tile = '.'; // clear spawn point
+                    }
+                    row.push(tile);
+                }
+                map.push(row);
+            }
+        }
+
+        // Initialize Level
+        loadLevel(level1);
+
+        function isSolid(tx, ty) {
+            if (tx < 0 || tx >= levelWidth) return true; // solid walls on edges
+            if (ty < 0 || ty >= levelHeight) return false; // not solid top/bottom (can fall in holes)
+            const tile = map[ty][tx];
+            return tile === '#' || tile === 'G';
+        }
+
+        function checkCollision(px, py, pw, ph) {
+            let tx1 = Math.floor(px / TILE_SIZE);
+            let tx2 = Math.floor((px + pw - 0.1) / TILE_SIZE);
+            let ty1 = Math.floor(py / TILE_SIZE);
+            let ty2 = Math.floor((py + ph - 0.1) / TILE_SIZE);
+
+            for (let ty = ty1; ty <= ty2; ty++) {
+                for (let tx = tx1; tx <= tx2; tx++) {
+                    if (isSolid(tx, ty)) return true;
+                }
+            }
+            return false;
+        }
 
         function update() {
-            // Horizontal movement
+            // Horizontal motion
             if (keys.left) {
                 player.vx = -WALK_SPEED;
             } else if (keys.right) {
@@ -101,52 +165,118 @@
                 player.grounded = false;
             }
 
-            // Apply gravity
+            // Gravity
             player.vy += GRAVITY;
             if (player.vy > TERMINAL_VELOCITY) {
                 player.vy = TERMINAL_VELOCITY;
             }
 
-            // Update position
+            // Horizontal Collision
             player.x += player.vx;
-            player.y += player.vy;
-
-            // Simple floor collision
-            if (player.y + player.height >= floorY) {
-                player.y = floorY - player.height;
-                player.vy = 0;
-                player.grounded = true;
-            } else {
-                player.grounded = false;
+            if (checkCollision(player.x, player.y, player.width, player.height)) {
+                if (player.vx > 0) { // moving right
+                    player.x = Math.floor((player.x + player.width) / TILE_SIZE) * TILE_SIZE - player.width;
+                } else if (player.vx < 0) { // moving left
+                    player.x = Math.floor(player.x / TILE_SIZE) * TILE_SIZE + TILE_SIZE;
+                }
+                player.vx = 0;
             }
 
-            // Keeping player in canvas temporarily
-            if (player.x < 0) player.x = 0;
-            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+            // Vertical Collision
+            player.grounded = false;
+            player.y += player.vy;
+            if (checkCollision(player.x, player.y, player.width, player.height)) {
+                if (player.vy > 0) { // falling
+                    player.y = Math.floor((player.y + player.height) / TILE_SIZE) * TILE_SIZE - player.height;
+                    player.grounded = true;
+                } else if (player.vy < 0) { // jumping up (hit ceiling)
+                    player.y = Math.floor(player.y / TILE_SIZE) * TILE_SIZE + TILE_SIZE;
+                }
+                player.vy = 0;
+            }
+
+            // Fall off bottom check
+            if (player.y > canvas.height + 100) {
+                // Temporary respawn behavior for falling in hole
+                loadLevel(level1);
+                player.vx = 0;
+                player.vy = 0;
+            }
+
+            // Camera follow
+            camera.x = Math.floor(player.x + player.width / 2 - canvas.width / 2);
+            if (camera.x < 0) camera.x = 0;
+            const maxCameraX = levelWidth * TILE_SIZE - canvas.width;
+            if (camera.x > maxCameraX) camera.x = maxCameraX;
         }
 
         function draw() {
             // Clear canvas
-            ctx.fillStyle = '#000';
+            ctx.fillStyle = '#111'; // Same as background
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Draw temporary floor
-            ctx.fillStyle = '#333';
-            ctx.fillRect(0, floorY, canvas.width, canvas.height - floorY);
+            const startX = Math.floor(camera.x / TILE_SIZE);
+            const endX = Math.floor((camera.x + canvas.width) / TILE_SIZE);
+
+            // Draw tiles
+            for (let y = 0; y < levelHeight; y++) {
+                for (let x = startX; x <= endX; x++) {
+                    if (x < 0 || x >= levelWidth) continue;
+                    
+                    let tile = map[y][x];
+                    let drawX = x * TILE_SIZE - camera.x;
+                    let drawY = y * TILE_SIZE;
+
+                    if (tile === '#' || tile === 'G') {
+                        ctx.fillStyle = '#8B5E3C';
+                        ctx.fillRect(drawX, drawY, TILE_SIZE, TILE_SIZE);
+                        ctx.strokeStyle = '#5A3A22';
+                        ctx.strokeRect(drawX, drawY, TILE_SIZE, TILE_SIZE);
+                    }
+                    if (tile === 'G') {
+                        ctx.fillStyle = '#44aa44';
+                        ctx.fillRect(drawX, drawY, TILE_SIZE, 8);
+                    }
+                    // Placeholders for dynamic elements
+                    if (tile === 'C') {
+                        ctx.fillStyle = '#ffcc00';
+                        ctx.beginPath();
+                        ctx.arc(drawX + 16, drawY + 16, 8, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    if (tile === 'S') { // Spike
+                        ctx.fillStyle = '#888';
+                        ctx.beginPath();
+                        ctx.moveTo(drawX + 16, drawY);
+                        ctx.lineTo(drawX + 32, drawY + 32);
+                        ctx.lineTo(drawX, drawY + 32);
+                        ctx.fill();
+                    }
+                    if (tile === 'E') { // Enemy
+                        ctx.fillStyle = '#cc3333';
+                        ctx.fillRect(drawX + 4, drawY + 16, 24, 16);
+                    }
+                    if (tile === 'D') { // Door
+                        ctx.fillStyle = '#8855aa';
+                        ctx.fillRect(drawX + 4, drawY, 24, 32);
+                    }
+                }
+            }
 
             // Draw player
+            let px = player.x - camera.x;
+            let py = player.y;
+
             // Body
             ctx.fillStyle = '#4488ff';
-            ctx.fillRect(player.x, player.y, player.width, player.height);
-            
+            ctx.fillRect(px, py, player.width, player.height);
             // Face
             ctx.fillStyle = '#ffcc88';
-            ctx.fillRect(player.x + 8, player.y + 4, 16, 16);
-
+            ctx.fillRect(px + 8, py + 4, 16, 16);
             // Shoes
             ctx.fillStyle = '#333';
-            ctx.fillRect(player.x + 2, player.y + 32, 10, 8); // Left shoe
-            ctx.fillRect(player.x + 20, player.y + 32, 10, 8); // Right shoe
+            ctx.fillRect(px + 2, py + 32, 10, 8);
+            ctx.fillRect(px + 20, py + 32, 10, 8);
         }
 
         function gameLoop() {
@@ -155,7 +285,7 @@
             requestAnimationFrame(gameLoop);
         }
 
-        // Start game loop
+        // Start game
         requestAnimationFrame(gameLoop);
     </script>
 </body>
