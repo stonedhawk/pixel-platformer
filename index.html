@@ -5,48 +5,351 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pixel Platformer</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Outfit:wght@300;400;600&display=swap');
+
         body {
             margin: 0;
             padding: 0;
-            background-color: #111;
+            background-color: #0b0c10;
+            background-image: radial-gradient(circle at center, #1f2833 0%, #0b0c10 100%);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             height: 100vh;
-            color: #fff;
-            font-family: sans-serif;
+            color: #c5c6c7;
+            font-family: 'Outfit', sans-serif;
             overflow: hidden;
         }
 
+        .game-container {
+            position: relative;
+            padding: 16px;
+            background: rgba(31, 40, 51, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 2px solid rgba(68, 170, 68, 0.5);
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(68, 170, 68, 0.2);
+            transition: border-color 0.5s ease, box-shadow 0.5s ease;
+        }
+
         #gameCanvas {
-            background-color: #000; /* Replaced by procedural drawing */
+            background-color: #000;
             display: block;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            border-radius: 6px;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8);
+        }
+
+        .hud-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 800px;
+            margin-top: 15px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 14px;
+            color: #8892b0;
+        }
+
+        .controls-hint {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .key-cap {
+            background: #1f2833;
+            border: 1px solid #45a29e;
+            border-bottom: 3px solid #45a29e;
+            border-radius: 4px;
+            padding: 3px 8px;
+            color: #66fcf1;
+            font-size: 11px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
 
         .signature {
-            margin-top: 10px;
-            font-size: 11px;
-            color: #555;
-            text-align: right;
-            width: 800px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 13px;
+            color: #45a29e;
+            font-weight: 600;
+        }
+
+        .signature a {
+            color: #66fcf1;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .signature a:hover {
+            color: #45a29e;
+        }
+
+        #muteBtn {
+            position: absolute;
+            top: 28px;
+            right: 28px;
+            background: rgba(31, 40, 51, 0.7);
+            border: 1px solid rgba(102, 252, 241, 0.3);
+            color: #66fcf1;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-family: 'Press Start 2P', monospace;
+            font-size: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            z-index: 10;
+        }
+
+        #muteBtn:hover {
+            background: #66fcf1;
+            color: #0b0c10;
+            box-shadow: 0 0 10px rgba(102, 252, 241, 0.5);
+            border-color: #66fcf1;
         }
     </style>
 </head>
 <body>
 
-    <canvas id="gameCanvas" width="800" height="450"></canvas>
-    <div class="signature">Created by Stonedhawk (Rahul)</div>
+    <div class="game-container">
+        <button id="muteBtn">MUTE: OFF</button>
+        <canvas id="gameCanvas" width="800" height="450"></canvas>
+    </div>
+    
+    <div class="hud-panel">
+        <div class="controls-hint">
+            <span class="key-cap">A</span>
+            <span class="key-cap">D</span> Move |
+            <span class="key-cap">W</span> / <span class="key-cap">Space</span> Jump
+        </div>
+        <div class="signature">Created by <a href="https://github.com/stonedhawk" target="_blank">Stonedhawk (Rahul)</a></div>
+    </div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Input state
-        const keys = { left: false, right: false, jump: false };
+        // Safe LocalStorage Helpers to prevent SecurityErrors in sandboxed iframe portals
+        function getLocalStorageSafe(key) {
+            try {
+                return localStorage.getItem(key);
+            } catch (e) {
+                return null;
+            }
+        }
+        function setLocalStorageSafe(key, value) {
+            try {
+                localStorage.setItem(key, value);
+            } catch (e) {}
+        }
 
+        // --- RETRO SOUND SYNTHESIZER ENGINE (Web Audio API) ---
+        const audio = {
+            ctx: null,
+            muted: getLocalStorageSafe('pixel_platformer_muted') === 'true',
+            init() {
+                if (this.ctx) return;
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            },
+            resumeIfNeeded() {
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            },
+            playTone(freqStart, freqEnd, duration, type = 'sine', gainStart = 0.1, gainEnd = 0.01) {
+                if (this.muted) return;
+                this.init();
+                if (!this.ctx) return;
+                this.resumeIfNeeded();
+                
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gainNode = this.ctx.createGain();
+                    
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freqStart, this.ctx.currentTime);
+                    if (freqEnd !== freqStart) {
+                        osc.frequency.exponentialRampToValueAtTime(freqEnd, this.ctx.currentTime + duration);
+                    }
+                    
+                    gainNode.gain.setValueAtTime(gainStart, this.ctx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(gainEnd, this.ctx.currentTime + duration);
+                    
+                    osc.connect(gainNode);
+                    gainNode.connect(this.ctx.destination);
+                    
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch (e) {
+                    console.warn("Audio playback failed", e);
+                }
+            },
+            playNoise(duration, lowPassFreq, gainStart = 0.1) {
+                if (this.muted) return;
+                this.init();
+                if (!this.ctx) return;
+                this.resumeIfNeeded();
+                
+                try {
+                    const bufferSize = this.ctx.sampleRate * duration;
+                    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                    const data = buffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        data[i] = Math.random() * 2 - 1;
+                    }
+                    
+                    const noise = this.ctx.createBufferSource();
+                    noise.buffer = buffer;
+                    
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(lowPassFreq, this.ctx.currentTime);
+                    filter.frequency.exponentialRampToValueAtTime(10, this.ctx.currentTime + duration);
+                    
+                    const gainNode = this.ctx.createGain();
+                    gainNode.gain.setValueAtTime(gainStart, this.ctx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+                    
+                    noise.connect(filter);
+                    filter.connect(gainNode);
+                    gainNode.connect(this.ctx.destination);
+                    
+                    noise.start();
+                    noise.stop(this.ctx.currentTime + duration);
+                } catch (e) {
+                    console.warn("Noise playback failed", e);
+                }
+            },
+            playJump() {
+                this.playTone(150, 550, 0.15, 'triangle', 0.15, 0.01);
+            },
+            playCoin() {
+                if (this.muted) return;
+                this.playTone(523.25, 523.25, 0.08, 'sine', 0.1, 0.01); // C5
+                setTimeout(() => {
+                    this.playTone(659.25, 659.25, 0.25, 'sine', 0.1, 0.01); // E5
+                }, 80);
+            },
+            playStomp() {
+                this.playNoise(0.18, 900, 0.2);
+                this.playTone(280, 70, 0.18, 'sawtooth', 0.15, 0.01);
+            },
+            playHit() {
+                this.playNoise(0.35, 180, 0.3);
+                this.playTone(150, 40, 0.35, 'sawtooth', 0.2, 0.01);
+            },
+            playLevelComplete() {
+                if (this.muted) return;
+                const notes = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => {
+                        this.playTone(freq, freq * 1.05, 0.12, 'square', 0.08, 0.01);
+                    }, idx * 90);
+                });
+            },
+            playWin() {
+                if (this.muted) return;
+                const notes = [261.63, 329.63, 392.00, 523.25, 392.00, 523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => {
+                        this.playTone(freq, freq, 0.18, 'triangle', 0.1, 0.01);
+                    }, idx * 70);
+                });
+            },
+            playGameOver() {
+                if (this.muted) return;
+                const notes = [392.00, 349.23, 311.13, 246.94]; // G4, F4, Eb4, B3
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => {
+                        this.playTone(freq, freq * 0.85, 0.35, 'sawtooth', 0.1, 0.01);
+                    }, idx * 130);
+                });
+            },
+            toggleMute() {
+                this.muted = !this.muted;
+                setLocalStorageSafe('pixel_platformer_muted', this.muted);
+                return this.muted;
+            }
+        };
+
+        // --- HIGH-FIDELITY RETRO PARTICLE SYSTEM ---
+        const particles = [];
+        function spawnParticles(x, y, color, count = 10, speed = 3, gravity = 0.15, decay = 0.94) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * speed,
+                    vy: (Math.random() - 0.5) * speed - (gravity ? 1 : 0),
+                    color: color,
+                    size: Math.random() * 4 + 2,
+                    gravity: gravity,
+                    decay: decay,
+                    alpha: 1,
+                    life: Math.random() * 20 + 20
+                });
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                if (p.gravity) p.vy += p.gravity;
+                p.vx *= p.decay;
+                p.vy *= p.decay;
+                p.alpha -= 0.025;
+                p.life--;
+                if (p.life <= 0 || p.alpha <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function drawParticles() {
+            for (let p of particles) {
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x - camera.x, p.y, p.size, p.size);
+                ctx.restore();
+            }
+        }
+
+        // --- JUICY SCREEN SHAKE SYSTEM ---
+        let screenShake = 0;
+        function triggerScreenShake(intensity) {
+            screenShake = intensity;
+        }
+
+        // --- INPUT STATE & UNLOCK AUDIO ---
+        const keys = { left: false, right: false, jump: false };
         let gameState = 'TITLE_SCREEN'; // TITLE_SCREEN, PLAYING, LEVEL_COMPLETE, GAME_OVER, WIN
+
+        const muteBtn = document.getElementById('muteBtn');
+        if (audio.muted) {
+            muteBtn.textContent = 'MUTE: ON';
+        }
+        muteBtn.addEventListener('click', () => {
+            audio.init();
+            const isMuted = audio.toggleMute();
+            muteBtn.textContent = isMuted ? 'MUTE: ON' : 'MUTE: OFF';
+            if (!isMuted) {
+                audio.playTone(440, 440, 0.08, 'sine', 0.05, 0.01);
+            }
+        });
+
+        // Initialize AudioContext on first user gesture
+        const unlockAudio = () => {
+            audio.init();
+            window.removeEventListener('keydown', unlockAudio);
+            window.removeEventListener('click', unlockAudio);
+        };
+        window.addEventListener('keydown', unlockAudio);
+        window.addEventListener('click', unlockAudio);
 
         window.addEventListener('keydown', (e) => {
             if (e.code === 'Space') {
@@ -95,6 +398,13 @@
             if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = false;
             if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = false;
             if (e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'Space') keys.jump = false;
+        });
+
+        // Reset movement inputs on tab focus loss
+        window.addEventListener('blur', () => {
+            keys.left = false;
+            keys.right = false;
+            keys.jump = false;
         });
 
         // Game Constants
@@ -311,6 +621,7 @@
             map = [];
             coinsList = [];
             enemiesList = [];
+            particles.length = 0; // Clear particles on level transition
             door = null;
             boss = null;
             levelFrames = 0;
@@ -330,10 +641,25 @@
                         player.y = player.startY;
                         tile = '.'; 
                     } else if (tile === 'C') {
-                        coinsList.push({ x: x * TILE_SIZE, y: y * TILE_SIZE, collected: false });
+                        coinsList.push({ 
+                            x: x * TILE_SIZE, 
+                            y: y * TILE_SIZE, 
+                            collected: false,
+                            spinOffset: Math.random() * 100 
+                        });
                         tile = '.';
                     } else if (tile === 'E') {
-                        enemiesList.push({ x: x * TILE_SIZE + 4, y: y * TILE_SIZE + 16, width: 24, height: 16, vx: -1, state: 'alive', squishTimer: 0 });
+                        enemiesList.push({ 
+                            x: x * TILE_SIZE + 4, 
+                            y: y * TILE_SIZE + 16, 
+                            width: 24, 
+                            height: 16, 
+                            vx: -1, 
+                            state: 'alive', 
+                            squishTimer: 0,
+                            type: (x + y) % 2 === 0 ? 'slime' : 'beetle',
+                            animOffset: Math.random() * 100
+                        });
                         tile = '.';
                     } else if (tile === 'D') {
                         door = { x: x * TILE_SIZE + 4, y: y * TILE_SIZE, width: 24, height: 32 };
@@ -348,6 +674,25 @@
             }
 
             camera.x = Math.max(0, Math.min(player.startX + player.width/2 - canvas.width/2, levelWidth*TILE_SIZE - canvas.width));
+
+            // Dynamic Biome Border Styling
+            const borderColors = [
+                'rgba(68, 170, 68, 0.5)',   // Level 1: Green Hills
+                'rgba(85, 85, 85, 0.5)',     // Level 2: Underground
+                'rgba(68, 187, 255, 0.5)',  // Level 3: Sky Fortress
+                'rgba(238, 246, 255, 0.5)', // Level 4: Snowy Peaks
+                'rgba(69, 162, 158, 0.5)',   // Level 5: Deep Dungeon
+                'rgba(102, 170, 68, 0.5)',  // Level 6: Canopy Jungle
+                'rgba(136, 85, 51, 0.5)',   // Level 7: Abandoned Factory
+                'rgba(255, 51, 0, 0.5)',    // Level 8: Volcanic Core
+                'rgba(102, 102, 255, 0.5)', // Level 9: The Void
+                'rgba(153, 0, 153, 0.5)'    // Level 10: Final Boss
+            ];
+            const container = document.querySelector('.game-container');
+            if (container && borderColors[index]) {
+                container.style.borderColor = borderColors[index];
+                container.style.boxShadow = `0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px ${borderColors[index].replace('0.5', '0.2')}`;
+            }
         }
 
         function isSolid(tx, ty) {
@@ -380,9 +725,18 @@
 
         function killPlayer() {
             if (player.invincibleTimer > 0) return;
+            
+            // Spawn death energy burst particles
+            spawnParticles(player.x + player.width/2, player.y + player.height/2, '#4488ff', 25, 6, 0.1, 0.95);
+            spawnParticles(player.x + player.width/2, player.y + player.height/2, '#ffcc88', 15, 4, 0.1, 0.95);
+            
+            triggerScreenShake(12);
+            audio.playHit();
+            
             lives--;
             if (lives <= 0) {
                 gameState = 'GAME_OVER';
+                audio.playGameOver();
             } else {
                 player.x = player.startX;
                 player.y = player.startY;
@@ -395,6 +749,10 @@
 
         function update() {
             frameCount++;
+            
+            // Particle update should run even on overlays for premium effect
+            updateParticles();
+            
             if (gameState !== 'PLAYING') return;
 
             levelFrames++;
@@ -417,6 +775,8 @@
                 player.vy = JUMP_VELOCITY;
                 player.grounded = false;
                 player.coyoteTimer = 0;
+                audio.playJump();
+                spawnParticles(player.x + player.width/2, player.y + player.height, '#ffffff', 8, 2, 0.05, 0.9);
             }
 
             // Gravity
@@ -432,12 +792,17 @@
             }
 
             // Vertical Collision
+            let wasGrounded = player.grounded;
             player.grounded = false;
             player.y += player.vy;
             if (checkCollision(player.x, player.y, player.width, player.height)) {
                 if (player.vy > 0) {
                     player.y = Math.floor((player.y + player.height) / TILE_SIZE) * TILE_SIZE - player.height;
                     player.grounded = true;
+                    // Spawn landing dust if landing
+                    if (!wasGrounded) {
+                        spawnParticles(player.x + player.width/2, player.y + player.height, '#ffffff', 5, 1.5, 0.05, 0.9);
+                    }
                 } else if (player.vy < 0) {
                     player.y = Math.floor(player.y / TILE_SIZE) * TILE_SIZE + TILE_SIZE;
                 }
@@ -471,6 +836,8 @@
                     coinsCount++;
                     currentLevelCoins++;
                     score += 50;
+                    audio.playCoin();
+                    spawnParticles(c.x + 16, c.y + 16, '#ffcc00', 10, 3, 0.05, 0.94);
                 }
             }
 
@@ -483,6 +850,9 @@
                         player.vy = -8; 
                         score += 100;
                         currentLevelEnemiesKilled++;
+                        audio.playStomp();
+                        spawnParticles(e.x + e.width/2, e.y + e.height/2, e.type === 'slime' ? '#e53935' : '#78909c', 12, 4, 0.1, 0.95);
+                        triggerScreenShake(5);
                     } else {
                         killPlayer();
                     }
@@ -518,6 +888,7 @@
                 levelStats.totalScore = score;
                 
                 gameState = 'LEVEL_COMPLETE';
+                audio.playLevelComplete();
             }
 
             // Boss Update
@@ -545,11 +916,21 @@
                             boss.hp--;
                             boss.invincibleTimer = 30;
                             score += 500;
+                            
+                            audio.playStomp();
+                            spawnParticles(boss.x + boss.width/2, boss.y + boss.height/2, '#9c27b0', 20, 5, 0.1, 0.95);
+                            triggerScreenShake(8);
+                            
                             if (boss.hp <= 0) {
                                 boss.state = 'dead';
                                 score += 5000;
                                 let doorTx = Math.floor(levelWidth / 2);
-                                door = { x: doorTx * TILE_SIZE + 4, y: 10 * TILE_SIZE, width: 24, height: 32 };
+                                door = { x: doorTx * TILE_SIZE + 4, y: 9 * TILE_SIZE, width: 24, height: 32 };
+                                
+                                audio.playWin();
+                                spawnParticles(boss.x + boss.width/2, boss.y + boss.height/2, '#ffcc00', 40, 6, 0.15, 0.96);
+                                spawnParticles(boss.x + boss.width/2, boss.y + boss.height/2, '#d500f9', 30, 5, 0.15, 0.96);
+                                triggerScreenShake(20);
                             }
                         }
                     } else {
@@ -716,42 +1097,75 @@
         }
 
         function draw() {
+            ctx.save();
+            
+            // Screen Shake translation
+            if (screenShake > 0.5) {
+                const dx = (Math.random() - 0.5) * screenShake;
+                const dy = (Math.random() - 0.5) * screenShake;
+                ctx.translate(dx, dy);
+                screenShake *= 0.85; // decay
+            }
+
             if (gameState === 'TITLE_SCREEN') {
                 frameCount++;
                 
                 // Pretty gradient
                 let grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-                grad.addColorStop(0, '#2266aa');
-                grad.addColorStop(1, '#113355');
+                grad.addColorStop(0, '#1f2833');
+                grad.addColorStop(1, '#0b0c10');
                 ctx.fillStyle = grad;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
                 ctx.textAlign = 'center';
                 
-                // Title
-                ctx.font = 'bold 64px sans-serif';
-                ctx.fillStyle = '#111';
-                ctx.fillText('PIXEL PLATFORMER', canvas.width / 2 + 4, 124);
-                ctx.fillStyle = '#ffcc00';
+                // Shadow Title
+                ctx.font = "bold 38px 'Press Start 2P', monospace";
+                ctx.fillStyle = '#000000';
+                ctx.fillText('PIXEL PLATFORMER', canvas.width / 2 + 3, 123);
+                
+                // Neon glow gold title
+                ctx.fillStyle = '#66fcf1';
                 ctx.fillText('PIXEL PLATFORMER', canvas.width / 2, 120);
 
-                // Player preview
+                // Player preview bobbing
                 ctx.save();
-                ctx.translate(canvas.width / 2, 220);
-                ctx.scale(2, 2); 
+                ctx.translate(canvas.width / 2, 210 + Math.sin(frameCount * 0.08) * 6);
+                ctx.scale(2.2, 2.2); 
                 
-                ctx.fillStyle = '#4488ff';
-                ctx.fillRect(-16, 0, 32, 40);
+                let bx = -16;
+                // Cap
+                ctx.fillStyle = '#cc1111';
+                ctx.fillRect(bx + 10, -4, 18, 4);
+                ctx.fillRect(bx + 14, -6, 12, 2);
+                // Face
                 ctx.fillStyle = '#ffcc88';
-                ctx.fillRect(0, 4, 16, 16);
+                ctx.fillRect(bx + 12, 0, 16, 12);
+                // Eye
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(bx + 22, 2, 4, 4);
+                ctx.fillStyle = '#000';
+                ctx.fillRect(bx + 24, 2, 2, 4);
+                // Body (Blue Overalls)
+                ctx.fillStyle = '#3366cc';
+                ctx.fillRect(bx, 12, player.width, 20);
+                // Shirt (Red shirt)
+                ctx.fillStyle = '#ff4444';
+                ctx.fillRect(bx, 8, player.width, 4);
+                ctx.fillRect(bx + 2, 12, 6, 12);
+                ctx.fillRect(bx + 24, 12, 6, 12);
+                // Shoes
                 ctx.fillStyle = '#333';
-                ctx.fillRect(-14, 32, 10, 8);
-                ctx.fillRect(4, 32, 10, 8);
+                ctx.fillRect(bx + 2, 32, 10, 8); 
+                ctx.fillRect(bx + 20, 32, 10, 8); 
+                
                 ctx.restore();
                 
-                ctx.font = '24px sans-serif';
-                ctx.fillStyle = (Math.floor(frameCount / 30) % 2 === 0) ? '#fff' : '#aaa';
-                ctx.fillText('Press SPACE to Start', canvas.width / 2, 380);
+                ctx.font = "14px 'Press Start 2P', monospace";
+                ctx.fillStyle = (Math.floor(frameCount / 30) % 2 === 0) ? '#66fcf1' : '#45a29e';
+                ctx.fillText('PRESS SPACE TO START', canvas.width / 2, 360);
+                
+                ctx.restore(); // end screen shake
                 return;
             }
 
@@ -771,68 +1185,304 @@
                     let drawY = y * TILE_SIZE;
 
                     if (tile === '#' || tile === 'G') {
-                        ctx.fillStyle = '#8B5E3C';
+                        // Ground texture with brick joints
+                        ctx.fillStyle = '#5c3d24'; // brick core
                         ctx.fillRect(drawX, drawY, TILE_SIZE, TILE_SIZE);
-                        ctx.strokeStyle = '#5A3A22';
+                        ctx.strokeStyle = '#3d2514'; // joints
+                        ctx.lineWidth = 2;
                         ctx.strokeRect(drawX, drawY, TILE_SIZE, TILE_SIZE);
+                        
+                        // Stone textures
+                        ctx.fillStyle = '#8b5e3c';
+                        ctx.fillRect(drawX + 4, drawY + 4, TILE_SIZE - 8, TILE_SIZE - 8);
                     }
                     if (tile === 'G') {
-                        ctx.fillStyle = '#44aa44';
+                        // Grass Top pixel art
+                        ctx.fillStyle = '#2e7d32'; // dark grass border
                         ctx.fillRect(drawX, drawY, TILE_SIZE, 8);
+                        ctx.fillStyle = '#4caf50'; // light grass blades
+                        ctx.fillRect(drawX, drawY, TILE_SIZE, 4);
+                        // small pixel variations for grass blades
+                        ctx.fillStyle = '#81c784';
+                        ctx.fillRect(drawX + 4, drawY, 2, 3);
+                        ctx.fillRect(drawX + 16, drawY, 2, 3);
+                        ctx.fillRect(drawX + 26, drawY, 2, 3);
                     }
                     if (tile === 'S') { 
-                        ctx.fillStyle = '#888';
-                        ctx.beginPath();
-                        ctx.moveTo(drawX + 16, drawY);
-                        ctx.lineTo(drawX + 32, drawY + 32);
-                        ctx.lineTo(drawX, drawY + 32);
-                        ctx.fill();
+                        // Spikes metal shading
+                        ctx.fillStyle = '#455a64'; // dark steel base
+                        ctx.fillRect(drawX, drawY + 24, TILE_SIZE, 8);
+                        
+                        // Draw 3 steel spikes in one tile! (Optimized flat retro pixel shading)
+                        for (let i = 0; i < 3; i++) {
+                            const sx = drawX + i * 10 + 2;
+                            const sy = drawY + 24;
+                            
+                            // Left side of spike (light side)
+                            ctx.fillStyle = '#cfd8dc'; // metallic light silver
+                            ctx.beginPath();
+                            ctx.moveTo(sx, sy);
+                            ctx.lineTo(sx + 4, sy - 20);
+                            ctx.lineTo(sx + 4, sy);
+                            ctx.closePath();
+                            ctx.fill();
+                            
+                            // Right side of spike (shadow side)
+                            ctx.fillStyle = '#78909c'; // blue-gray shadow
+                            ctx.beginPath();
+                            ctx.moveTo(sx + 4, sy - 20);
+                            ctx.lineTo(sx + 8, sy);
+                            ctx.lineTo(sx + 4, sy);
+                            ctx.closePath();
+                            ctx.fill();
+                            
+                            // Sharp dark stroke border
+                            ctx.strokeStyle = '#263238';
+                            ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.moveTo(sx, sy);
+                            ctx.lineTo(sx + 4, sy - 20);
+                            ctx.lineTo(sx + 8, sy);
+                            ctx.stroke();
+                        }
                     }
                 }
             }
 
-            // Draw Door
+            // Draw Door (Cosmic portal)
             if (door) {
-                ctx.fillStyle = '#8855aa';
-                ctx.fillRect(door.x - camera.x, door.y, door.width, door.height);
-            }
-
-            // Draw coins
-            for (let c of coinsList) {
-                if (!c.collected) {
-                    const shimmer = (frameCount % 30 < 15) ? 6 : 8; 
-                    ctx.fillStyle = '#ffcc00';
-                    ctx.beginPath();
-                    ctx.arc(c.x + 16 - camera.x, c.y + 16, shimmer, 0, Math.PI * 2);
-                    ctx.fill();
+                let dx = door.x - camera.x;
+                let dy = door.y;
+                let dw = door.width;
+                let dh = door.height;
+                
+                // Stone Arch Frame
+                ctx.fillStyle = '#455a64';
+                ctx.fillRect(dx - 4, dy - 4, dw + 8, dh + 4);
+                ctx.fillStyle = '#37474f';
+                ctx.fillRect(dx - 2, dy, dw + 4, dh);
+                
+                ctx.strokeStyle = '#263238';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(dx - 4, dy - 4, dw + 8, dh + 4);
+                
+                // Swirling Cosmic Portal
+                let swirl = ctx.createRadialGradient(dx + dw/2, dy + dh/2, 2, dx + dw/2, dy + dh/2, dw/2);
+                let color1 = `hsl(${(frameCount * 3.5) % 360}, 100%, 55%)`;
+                let color2 = `hsl(${(frameCount * 3.5 + 120) % 360}, 100%, 35%)`;
+                swirl.addColorStop(0, '#ffffff');
+                swirl.addColorStop(0.3, color1);
+                swirl.addColorStop(0.8, color2);
+                swirl.addColorStop(1, '#000000');
+                
+                ctx.fillStyle = swirl;
+                ctx.fillRect(dx, dy, dw, dh);
+                
+                // Cosmic sparkles
+                ctx.fillStyle = '#ffffff';
+                if (Math.random() < 0.4) {
+                    ctx.fillRect(dx + Math.random() * dw, dy + Math.random() * dh, 2.5, 2.5);
                 }
             }
 
-            // Draw Enemies
+            // Draw coins (Rotating golden coin)
+            for (let c of coinsList) {
+                if (!c.collected) {
+                    const angle = (frameCount + c.spinOffset) * 0.12;
+                    const widthScale = Math.abs(Math.sin(angle));
+                    ctx.save();
+                    ctx.translate(c.x + 16 - camera.x, c.y + 16);
+                    ctx.scale(widthScale, 1);
+                    
+                    // Golden base
+                    ctx.fillStyle = '#ffcc00';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Inner ring detail
+                    ctx.strokeStyle = '#e68a00';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 5, 0, Math.PI * 2);
+                    ctx.stroke();
+                    
+                    // Central shine
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(-2, -3, 2.5, 2.5);
+                    ctx.restore();
+                }
+            }
+
+            // Draw Enemies (Slime or Spiked Beetle)
             for (let e of enemiesList) {
                 if (e.state === 'dead') continue;
                 let ex = e.x - camera.x;
-                ctx.fillStyle = '#cc3333';
-                if (e.state === 'squished') ctx.fillRect(ex, e.y + e.height/2, e.width, e.height / 2);
-                else ctx.fillRect(ex, e.y, e.width, e.height);
+                let ey = e.y;
+                let eh = e.height;
+                let ew = e.width;
+                let animOffset = Math.sin((frameCount + e.animOffset) * 0.16) * 2;
+                
+                if (e.type === 'slime') {
+                    if (e.state === 'squished') {
+                        ctx.fillStyle = '#cc3333';
+                        ctx.fillRect(ex, ey + eh - 5, ew, 5);
+                        ctx.fillStyle = '#fff';
+                        ctx.fillRect(ex + 4, ey + eh - 5, 4, 3);
+                        ctx.fillRect(ex + ew - 8, ey + eh - 5, 4, 3);
+                    } else {
+                        // Red bouncy slime body
+                        ctx.fillStyle = '#e53935';
+                        ctx.beginPath();
+                        ctx.arc(ex + ew/2, ey + eh, ew/2, Math.PI, 0);
+                        ctx.lineTo(ex + ew, ey + eh);
+                        ctx.lineTo(ex, ey + eh);
+                        ctx.closePath();
+                        ctx.fill();
+                        
+                        ctx.fillStyle = '#ef5350';
+                        ctx.beginPath();
+                        ctx.arc(ex + ew/2, ey + eh, ew/3, Math.PI, 0);
+                        ctx.closePath();
+                        ctx.fill();
+                        
+                        // Animated bouncing eyes
+                        ctx.fillStyle = '#ffffff';
+                        let eyeY = ey + eh/2 + animOffset/2;
+                        ctx.fillRect(ex + 4, eyeY, 4, 5);
+                        ctx.fillRect(ex + ew - 8, eyeY, 4, 5);
+                        ctx.fillStyle = '#111';
+                        let lookDir = e.vx > 0 ? 1 : -1;
+                        ctx.fillRect(ex + 5 + lookDir, eyeY + 2, 2, 2);
+                        ctx.fillRect(ex + ew - 7 + lookDir, eyeY + 2, 2, 2);
+                    }
+                } else {
+                    // beetle spike enemy
+                    if (e.state === 'squished') {
+                        ctx.fillStyle = '#78909c';
+                        ctx.fillRect(ex, ey + eh - 5, ew, 5);
+                    } else {
+                        // Metal armored spiked shell
+                        ctx.fillStyle = '#455a64';
+                        ctx.fillRect(ex + 2, ey + 4, ew - 4, eh - 4);
+                        
+                        // draw shell spike details
+                        ctx.fillStyle = '#cfd8dc';
+                        ctx.beginPath();
+                        ctx.moveTo(ex + 4, ey + 4);
+                        ctx.lineTo(ex + 6, ey - 2);
+                        ctx.lineTo(ex + 8, ey + 4);
+                        ctx.moveTo(ex + 12, ey + 4);
+                        ctx.lineTo(ex + 14, ey - 2);
+                        ctx.lineTo(ex + 16, ey + 4);
+                        ctx.fill();
+                        
+                        // orange glowing insect eyes
+                        ctx.fillStyle = '#ff9100';
+                        let faceX = e.vx > 0 ? ex + ew - 6 : ex + 2;
+                        ctx.fillRect(faceX, ey + 8, 4, 4);
+                        
+                        // Pattering legs
+                        ctx.strokeStyle = '#263238';
+                        ctx.lineWidth = 2;
+                        let legCycle = (Math.floor(frameCount / 4) % 2 === 0);
+                        ctx.beginPath();
+                        ctx.moveTo(ex + 4, ey + eh);
+                        ctx.lineTo(ex + (legCycle ? 2 : 4), ey + eh + 2);
+                        ctx.moveTo(ex + ew - 4, ey + eh);
+                        ctx.lineTo(ex + ew - (legCycle ? 4 : 2), ey + eh + 2);
+                        ctx.stroke();
+                    }
+                }
             }
 
-            // Draw Boss
+            // Draw Boss (Colossal pixel demon)
             if (boss && boss.state === 'alive') {
                 let bx = boss.x - camera.x;
-                ctx.fillStyle = '#990099';
-                if (boss.invincibleTimer > 0 && Math.floor(frameCount / 4) % 2 === 0) ctx.fillStyle = '#ffffff';
-                ctx.fillRect(bx, boss.y, boss.width, boss.height);
+                let by = boss.y;
+                let bw = boss.width;
+                let bh = boss.height;
+                
+                ctx.save();
+                let isInvincible = boss.invincibleTimer > 0;
+                if (isInvincible && Math.floor(frameCount / 4) % 2 === 0) {
+                    ctx.globalAlpha = 0.4;
+                }
+                
+                // Colossal body gradient
+                let bodyGrad = ctx.createLinearGradient(bx, by, bx + bw, by + bh);
+                bodyGrad.addColorStop(0, '#4a148c');
+                bodyGrad.addColorStop(0.5, '#7b1fa2');
+                bodyGrad.addColorStop(1, '#1a0033');
+                ctx.fillStyle = bodyGrad;
+                
+                ctx.beginPath();
+                ctx.arc(bx + bw/2, by + bh/2, bw/2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Scaly highlights
+                ctx.fillStyle = '#9c27b0';
+                ctx.fillRect(bx + 12, by + 12, 6, 6);
+                ctx.fillRect(bx + bw - 18, by + 12, 6, 6);
+                ctx.fillRect(bx + bw/2 - 4, by + bh - 16, 8, 4);
+                
+                // Demon Horns
+                ctx.fillStyle = '#d500f9';
+                ctx.beginPath();
+                ctx.moveTo(bx + 8, by + 8);
+                ctx.lineTo(bx - 4, by - 12);
+                ctx.lineTo(bx + 18, by + 2);
+                ctx.moveTo(bx + bw - 8, by + 8);
+                ctx.lineTo(bx + bw + 4, by - 12);
+                ctx.lineTo(bx + bw - 18, by + 2);
+                ctx.fill();
+                
+                // Angry red glowing eyes
+                ctx.fillStyle = '#ff1744';
+                let eyeY = by + 14 + Math.sin(frameCount * 0.1) * 2;
+                ctx.fillRect(bx + 8, eyeY, 10, 6);
+                ctx.fillRect(bx + bw - 18, eyeY, 10, 6);
+                
                 ctx.fillStyle = '#ffff00';
-                if (boss.vx > 0) ctx.fillRect(bx + 30, boss.y + 10, 8, 8);
-                else ctx.fillRect(bx + 10, boss.y + 10, 8, 8);
+                let lookX = boss.vx > 0 ? 2 : -2;
+                ctx.fillRect(bx + 12 + lookX, eyeY + 2, 3, 3);
+                ctx.fillRect(bx + bw - 14 + lookX, eyeY + 2, 3, 3);
+                
+                // Evil fanged grin
                 ctx.fillStyle = '#333';
-                ctx.fillRect(bx, boss.y - 12, boss.width, 6);
-                ctx.fillStyle = '#ff3333';
-                ctx.fillRect(bx, boss.y - 12, (boss.hp / 5) * boss.width, 6);
+                ctx.fillRect(bx + 12, by + 28, bw - 24, 8);
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(bx + 16, by + 28, 4, 4);
+                ctx.fillRect(bx + bw - 20, by + 28, 4, 4);
+                ctx.fillRect(bx + bw/2 - 2, by + 32, 4, 4);
+                
+                ctx.restore();
+                
+                // Floating bobbing claws
+                let handY = by + bh/2 + Math.sin(frameCount * 0.08) * 6;
+                ctx.fillStyle = '#7b1fa2';
+                ctx.fillRect(bx - 12, handY, 8, 12);
+                ctx.fillRect(bx + bw + 4, handY, 8, 12);
+                ctx.fillStyle = '#d500f9';
+                ctx.fillRect(bx - 10, handY - 2, 4, 4);
+                ctx.fillRect(bx + bw + 6, handY - 2, 4, 4);
+
+                // Boss HP Bar
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                ctx.fillRect(bx - 6, by - 22, bw + 12, 10);
+                
+                let hpGrad = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+                hpGrad.addColorStop(0, '#ff1744');
+                hpGrad.addColorStop(1, '#ff9100');
+                ctx.fillStyle = hpGrad;
+                ctx.fillRect(bx, by - 20, (boss.hp / 5) * bw, 6);
+                
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(bx, by - 20, bw, 6);
             }
 
-            // Draw player
+            // Draw player (Super polished retro pixel character!)
             let px = player.x - camera.x;
             let py = player.y;
 
@@ -846,12 +1496,30 @@
             
             let bx = -16;
 
-            // Body
-            ctx.fillStyle = '#4488ff';
-            ctx.fillRect(bx, 0, player.width, player.height);
-            // Face
+            // Red cap
+            ctx.fillStyle = '#cc1111';
+            ctx.fillRect(bx + 10, -4, 18, 4);
+            ctx.fillRect(bx + 14, -6, 12, 2);
+
+            // Face details
             ctx.fillStyle = '#ffcc88';
-            ctx.fillRect(bx + 16, 4, 16, 16);
+            ctx.fillRect(bx + 12, 0, 16, 12);
+
+            // Eye details
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(bx + 22, 2, 4, 4);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(bx + 24, 2, 2, 4);
+            
+            // Body (Blue Overalls)
+            ctx.fillStyle = '#3366cc';
+            ctx.fillRect(bx, 12, player.width, 20);
+            
+            // Shirt (Red shirt sleeves & collar)
+            ctx.fillStyle = '#ff4444';
+            ctx.fillRect(bx, 8, player.width, 4);
+            ctx.fillRect(bx + 2, 12, 6, 12);
+            ctx.fillRect(bx + 24, 12, 6, 12);
             
             // Walking animation
             let jumpOffset = 0;
@@ -877,81 +1545,97 @@
 
             ctx.restore();
 
-            // Draw HUD
+            // Draw high-fidelity particles
+            drawParticles();
+
+            ctx.restore(); // Restore screen shake translate state
+
+            // --- DRAW HUD (ARCADE AESTHETIC) ---
+            ctx.save();
+            ctx.font = "bold 11px 'Press Start 2P', monospace";
             ctx.textAlign = 'left';
             
-            // Coins
+            // Coins HUD icon & count
             ctx.fillStyle = '#ffcc00';
             ctx.beginPath();
-            ctx.arc(20, 20, 8, 0, Math.PI * 2);
+            ctx.arc(22, 20, 7, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = '#fff';
-            ctx.font = 'bold 16px sans-serif';
-            ctx.fillText(coinsCount, 35, 26);
+            ctx.fillText(String(coinsCount).padStart(3, '0'), 36, 25);
 
-            // Level Name
+            // Level Name HUD
             ctx.textAlign = 'center';
-            ctx.fillText(levelName, canvas.width / 2, 26);
+            ctx.fillStyle = '#66fcf1';
+            ctx.fillText(levelName.toUpperCase(), canvas.width / 2, 25);
 
-            // Lives and Score
+            // Lives and Score HUD
             ctx.textAlign = 'right';
             let hearts = '';
             for(let i = 0; i < lives; i++) hearts += '♥';
-            ctx.fillStyle = '#f44';
-            ctx.fillText(hearts, canvas.width - 120, 26);
+            ctx.fillStyle = '#ff3366';
+            ctx.fillText(hearts, canvas.width - 120, 25);
             ctx.fillStyle = '#fff';
-            ctx.fillText(String(score).padStart(5, '0'), canvas.width - 20, 26);
+            ctx.fillText(String(score).padStart(6, '0'), canvas.width - 20, 25);
+            ctx.restore();
 
-            // Draw Overlays
+            // Draw Screen Overlay Dialogs
             if (gameState !== 'PLAYING') {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.save();
+                ctx.fillStyle = 'rgba(11, 12, 16, 0.82)'; // dark glossy backdrop
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.textAlign = 'center';
 
                 if (gameState === 'LEVEL_COMPLETE') {
-                    ctx.font = 'bold 36px sans-serif';
-                    ctx.fillStyle = '#4488ff';
-                    ctx.fillText('LEVEL COMPLETE!', canvas.width / 2, 120);
+                    ctx.font = "bold 26px 'Press Start 2P', monospace";
+                    ctx.fillStyle = '#66fcf1';
+                    ctx.fillText('LEVEL COMPLETE!', canvas.width / 2, 110);
                     
-                    ctx.font = '20px sans-serif';
+                    ctx.font = "11px 'Press Start 2P', monospace";
                     ctx.fillStyle = '#fff';
-                    ctx.fillText(`Coins Collected: ${levelStats.coins} x 50`, canvas.width / 2, 180);
-                    ctx.fillText(`Enemies Defeated: ${levelStats.enemies} x 100`, canvas.width / 2, 220);
-                    ctx.fillText(`Time Bonus: ${levelStats.timeBonus} (Time: ${levelStats.time}s)`, canvas.width / 2, 260);
-                    ctx.fillText(`Level Bonus: ${levelStats.levelBonus}`, canvas.width / 2, 300);
+                    ctx.fillText(`COINS COLLECTED: ${levelStats.coins} x 50`, canvas.width / 2, 175);
+                    ctx.fillText(`ENEMIES DEFEATED: ${levelStats.enemies} x 100`, canvas.width / 2, 210);
+                    ctx.fillText(`TIME BONUS: ${levelStats.timeBonus} (${levelStats.time}s)`, canvas.width / 2, 245);
+                    ctx.fillText(`LEVEL CLEAR BONUS: ${levelStats.levelBonus}`, canvas.width / 2, 280);
                     
-                    ctx.font = 'bold 24px sans-serif';
+                    ctx.font = "bold 15px 'Press Start 2P', monospace";
                     ctx.fillStyle = '#ffcc00';
-                    ctx.fillText(`Total Score: ${levelStats.totalScore}`, canvas.width / 2, 350);
+                    ctx.fillText(`TOTAL SCORE: ${levelStats.totalScore}`, canvas.width / 2, 335);
                     
-                    ctx.font = '16px sans-serif';
-                    ctx.fillStyle = (Math.floor(frameCount / 30) % 2 === 0) ? '#fff' : '#aaa';
-                    ctx.fillText('Press SPACE to continue', canvas.width / 2, 400);
+                    ctx.font = "10px 'Press Start 2P', monospace";
+                    ctx.fillStyle = (Math.floor(frameCount / 30) % 2 === 0) ? '#66fcf1' : '#45a29e';
+                    ctx.fillText('PRESS SPACE TO CONTINUE', canvas.width / 2, 395);
                 } 
                 else if (gameState === 'GAME_OVER') {
-                    ctx.font = 'bold 48px sans-serif';
-                    ctx.fillStyle = '#cc3333';
-                    ctx.fillText('GAME OVER', canvas.width / 2, 200);
-                    ctx.font = '24px sans-serif';
-                    ctx.fillStyle = '#fff';
-                    ctx.fillText(`Total Score: ${score}`, canvas.width / 2, 250);
+                    ctx.font = "bold 32px 'Press Start 2P', monospace";
+                    ctx.fillStyle = '#ff3366';
+                    ctx.fillText('GAME OVER', canvas.width / 2, 180);
                     
-                    ctx.font = '16px sans-serif';
-                    ctx.fillStyle = (Math.floor(frameCount / 30) % 2 === 0) ? '#fff' : '#aaa';
-                    ctx.fillText('Press SPACE to Try Again', canvas.width / 2, 320);
+                    ctx.font = "14px 'Press Start 2P', monospace";
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText(`FINAL SCORE: ${score}`, canvas.width / 2, 240);
+                    
+                    ctx.font = "10px 'Press Start 2P', monospace";
+                    ctx.fillStyle = (Math.floor(frameCount / 30) % 2 === 0) ? '#66fcf1' : '#45a29e';
+                    ctx.fillText('PRESS SPACE TO TRY AGAIN', canvas.width / 2, 320);
                 }
                 else if (gameState === 'WIN') {
-                    ctx.font = 'bold 48px sans-serif';
+                    ctx.font = "bold 36px 'Press Start 2P', monospace";
                     ctx.fillStyle = '#ffcc00';
-                    ctx.fillText('YOU WIN!', canvas.width / 2, 200);
-                    ctx.font = '24px sans-serif';
-                    ctx.fillStyle = '#fff';
-                    ctx.fillText(`Final Score: ${score}`, canvas.width / 2, 250);
+                    ctx.fillText('YOU WIN!', canvas.width / 2, 160);
                     
-                    ctx.font = '16px sans-serif';
-                    ctx.fillStyle = (Math.floor(frameCount / 30) % 2 === 0) ? '#fff' : '#aaa';
-                    ctx.fillText('Press SPACE to Play Again', canvas.width / 2, 320);
+                    ctx.font = "15px 'Press Start 2P', monospace";
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText(`FINAL SCORE: ${score}`, canvas.width / 2, 230);
+                    
+                    ctx.font = "11px 'Press Start 2P', monospace";
+                    ctx.fillStyle = '#66fcf1';
+                    ctx.fillText('CONGRATULATIONS HERO!', canvas.width / 2, 280);
+                    
+                    ctx.font = "10px 'Press Start 2P', monospace";
+                    ctx.fillStyle = (Math.floor(frameCount / 30) % 2 === 0) ? '#66fcf1' : '#45a29e';
+                    ctx.fillText('PRESS SPACE TO PLAY AGAIN', canvas.width / 2, 340);
                 }
+                ctx.restore();
             }
         }
 
